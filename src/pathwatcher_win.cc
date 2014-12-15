@@ -123,8 +123,11 @@ void PlatformInit() {
   WakeupNewThread();
 }
 
+#define DBG(...) fwprintf(stderr, __VA_ARGS__)
+
 void PlatformThread() {
   while (true) {
+    DBG(L"> Another iteration is started\n");
     // Do not use g_events directly, since reallocation could happen when there
     // are new watchers adding to g_events when WaitForMultipleObjects is still
     // polling.
@@ -132,23 +135,31 @@ void PlatformThread() {
     std::vector<HANDLE> copied_events(g_events);
     locker.Unlock();
 
+    DBG(L"Going to wait for %d events\n", (int)copied_events.size());
     DWORD r = WaitForMultipleObjects(copied_events.size(),
                                      copied_events.data(),
                                      FALSE,
                                      INFINITE);
     int i = r - WAIT_OBJECT_0;
+    DBG(L"Awaited\n");
     if (i >= 0 && i < copied_events.size()) {
+      DBG(L"More than 0 events!\n");
       // It's a wake up event, there is no fs events.
-      if (copied_events[i] == g_wake_up_event)
+      if (copied_events[i] == g_wake_up_event) {
+        DBG(L"It was a g_wake_up_event\n");
         continue;
+      }
 
       ScopedLocker locker(g_handle_wrap_map_mutex);
 
       HandleWrapper* handle = HandleWrapper::Get(copied_events[i]);
-      if (!handle)
+      if (!handle) {
+        DBG(L"No handle on the event?\n");
         continue;
+      }
 
       if (handle->canceled) {
+        DBG(L"Event was cancelled\n");
         delete handle;
         continue;
       }
@@ -157,16 +168,22 @@ void PlatformThread() {
       if (GetOverlappedResult(handle->dir_handle,
                               &handle->overlapped,
                               &bytes,
-                              FALSE) == FALSE)
+                              FALSE) == FALSE) {
+        DBG(L"GetOverlappedResult was FALSE\n");
         continue;
+      }
 
       std::vector<char> old_path;
       std::vector<WatcherEvent> events;
 
       DWORD offset = 0;
+      DBG(L">> Entering another loop\n");
       while (true) {
+        DBG(L"processing new FILE_NOTIFY_INFORMATION on offset %d\n", offset);
         FILE_NOTIFY_INFORMATION* file_info =
             reinterpret_cast<FILE_NOTIFY_INFORMATION*>(handle->buffer + offset);
+
+        DBG(L"The filepath is %s, event %d\n", file_info->FileName, file_info->Action);
 
         // Emit events for children.
         EVENT_TYPE event = EVENT_NONE;
@@ -189,6 +206,7 @@ void PlatformThread() {
         }
 
         if (event != EVENT_NONE) {
+          DBG(L"Handle the event\n");
           // The FileNameLength is in "bytes", but the WideCharToMultiByte
           // requires the length to be in "characters"!
           int file_name_length_in_characters =
@@ -231,6 +249,7 @@ void PlatformThread() {
         if (file_info->NextEntryOffset == 0) break;
         offset += file_info->NextEntryOffset;
       }
+      DBG(L"<< Exiting another loop\n");
 
       // Restart the monitor, it was reset after each call.
       QueueReaddirchanges(handle);
@@ -243,8 +262,11 @@ void PlatformThread() {
                          events[i].new_path,
                          events[i].old_path);
     }
+    DBG(L"< Another iteration is gone\n");
   }
 }
+
+#undef DBG
 
 WatcherHandle PlatformWatch(const char* path) {
   wchar_t wpath[MAX_PATH] = { 0 };
