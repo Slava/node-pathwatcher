@@ -135,7 +135,7 @@ void PlatformThread() {
     std::vector<HANDLE> copied_events(g_events);
     locker.Unlock();
 
-    DBG(L"Going to wait for %d events\n", (int)copied_events.size());
+    DBG(L"Going to wait for %d events\n", static_cast<int>(copied_events.size()));
     DWORD r = WaitForMultipleObjects(copied_events.size(),
                                      copied_events.data(),
                                      FALSE,
