@@ -141,7 +141,8 @@ void PlatformThread() {
                                      FALSE,
                                      INFINITE);
     int i = r - WAIT_OBJECT_0;
-    DBG(L"Awaited\n");
+    DBG(L"Awaited %d error=%d\n", i, GetLastError());
+
     if (i >= 0 && i < copied_events.size()) {
       DBG(L"More than 0 events!\n");
       // It's a wake up event, there is no fs events.
